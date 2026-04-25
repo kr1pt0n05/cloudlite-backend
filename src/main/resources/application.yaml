@@ -48,5 +48,5 @@ allowed:
 
 file:
   storage:
-    base-path: ${FILE_STORAGE_PATH:./uploads}
+    base-path: ${FILE_STORAGE_PATH:./.uploads}
 
