@@ -1,3 +1,52 @@
 spring:
   application:
     name: CloudLite
+
+  config:
+    import: optional:file:../.env[.properties]
+
+  profiles:
+    active: development
+
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:cloudlite}
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+    hikari:
+      auto-commit: false
+
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_HIBERNATE_DDL_AUTO:create-drop}
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          batch_size: 1000
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${ISSUER_URI:http://localhost:${KC_PORT:8080}/realms/cloudlite}
+
+server:
+  port: ${PORT:8000}
+
+keycloak:
+  frontend:
+    client-id: ${KEYCLOAK_FRONTEND_CLIENT_ID:frontend-client}
+
+allowed:
+  origin: ${ALLOWED_ORIGIN:http://localhost:4200}
+
+file:
+  storage:
+    base-path: ${FILE_STORAGE_PATH:./uploads}
+

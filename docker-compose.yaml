@@ -1,0 +1,69 @@
+services:
+  postgres:
+    container_name: "cloudlite_postgres"
+    image: postgres:18
+    restart: unless-stopped
+    # set shared memory limit when using docker-compose
+    shm_size: 128mb
+    # or set shared memory limit when deploy via swarm stack
+    #volumes:
+    #  - type: tmpfs
+    #    target: /dev/shm
+    #    tmpfs:
+    #      size: 134217728 # 128*2^20 bytes = 128Mb
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - .psql:/var/lib/postgresql/18/docker
+    ports:
+      - "${POSTGRES_PORT}:5432"
+
+    
+  postgres_keycloak:
+    container_name: "cloudlite_keycloak_postgres"
+    image: postgres:18
+    restart: unless-stopped
+    # set shared memory limit when using docker-compose
+    shm_size: 128mb
+    # or set shared memory limit when deploy via swarm stack
+    #volumes:
+    #  - type: tmpfs
+    #    target: /dev/shm
+    #    tmpfs:
+    #      size: 134217728 # 128*2^20 bytes = 128Mb
+    environment:
+      - POSTGRES_USER=${KC_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${KC_POSTGRES_PASSWORD}
+      - POSTGRES_DB=${KC_POSTGRES_DB}
+    volumes:
+      - .psql_kc:/var/lib/postgresql/18/docker
+    networks:
+      - keycloak_network
+
+
+  keycloak:
+    container_name: "cloudlite_keycloak"
+    image: quay.io/keycloak/keycloak:26.5.7
+    command: start-dev --import-realm
+    ports:
+      - "127.0.0.1:${KC_PORT}:8080"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_PASSWORD}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres_keycloak/${KC_POSTGRES_DB}
+      KC_DB_USERNAME: ${KC_POSTGRES_USER}
+      KC_DB_PASSWORD: ${KC_POSTGRES_PASSWORD}
+    volumes:
+      - ./export:/opt/keycloak/data/export
+      - ./import:/opt/keycloak/data/import
+    networks:
+      - keycloak_network
+    depends_on:
+      - postgres_keycloak
+
+networks:
+  keycloak_network:
+    driver: bridge
