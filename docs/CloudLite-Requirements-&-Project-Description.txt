@@ -43,8 +43,7 @@ Stored in Postgres:
 - filenames
 - ownership
 - timestamps
-- file → version mapping
-- version → blob mapping
+- file → blob mapping
 - file size
 - checksum (SHA-256)
 #### 7. Blob Storage
