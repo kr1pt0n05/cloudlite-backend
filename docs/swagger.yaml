@@ -390,7 +390,7 @@ components:
           example: Not Found
         message:
           type: string
-          example: Folder not found: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+          example: "Folder not found: 3fa85f64-5717-4562-b3fc-2c963f66afa6"
         path:
           type: string
           example: /api/upload/sessions
