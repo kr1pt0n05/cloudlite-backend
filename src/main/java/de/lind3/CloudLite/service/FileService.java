@@ -32,12 +32,12 @@ public interface FileService {
     List<FileEntity> listFiles(UUID folderId, String requesterSubject);
 
     /**
-     * Opens a stream to download the file's current blob content.
+     * Opens a stream to download the file's blob content.
      * The caller is responsible for closing the returned stream.
      *
      * @param fileId           ID of the file
      * @param requesterSubject JWT {@code sub} claim of the requesting user
-     * @return raw byte stream of the current file version
+     * @return raw byte stream of the file's blob
      * @throws IOException if the blob cannot be read from storage
      */
     InputStream downloadFile(UUID fileId, String requesterSubject) throws IOException;

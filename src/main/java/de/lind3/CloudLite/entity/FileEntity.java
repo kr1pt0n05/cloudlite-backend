@@ -12,8 +12,8 @@ import java.util.UUID;
 
 /**
  * Represents a logical file entry inside a folder.
- * The actual content is stored via a {@link FileVersionEntity} → {@link BlobEntity} chain.
- * {@code currentVersion} points to the most recently committed version.
+ * The binary content is stored in the linked {@link BlobEntity}.
+ * Null while the file's upload session has not yet been committed.
  */
 @Entity
 @Table(
@@ -42,12 +42,12 @@ public class FileEntity {
     private UserEntity owner;
 
     /**
-     * Points to the latest committed version. Null while the file's initial upload
-     * session has not yet been committed.
+     * The blob holding the file's binary content.
+     * Null while the file's upload session has not yet been committed.
      */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "current_version_id")
-    private FileVersionEntity currentVersion;
+    @JoinColumn(name = "blob_id")
+    private BlobEntity blob;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
