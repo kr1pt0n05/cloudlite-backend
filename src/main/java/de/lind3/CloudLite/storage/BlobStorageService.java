@@ -11,15 +11,16 @@ import java.io.InputStream;
 public interface BlobStorageService {
 
     /**
-     * Streams the given content to storage and returns an opaque storage key
-     * that can later be used to retrieve or delete the blob.
+     * Streams the given content to storage, computing the SHA-256 digest and byte count
+     * in a single pass. Returns a {@link BlobWriteResult} containing the storage key,
+     * hex SHA-256, and byte count — no second read of the content is required.
      *
      * @param content      readable stream of the raw file bytes (not buffered by the caller)
      * @param suggestedKey preferred storage key; implementations may ignore or adjust it
-     * @return the storage key under which the blob was persisted
+     * @return write result with storage key, sha256, and size
      * @throws IOException if the write fails
      */
-    String store(InputStream content, String suggestedKey) throws IOException;
+    BlobWriteResult store(InputStream content, String suggestedKey) throws IOException;
 
     /**
      * Opens a stream to read the blob identified by {@code storageKey}.

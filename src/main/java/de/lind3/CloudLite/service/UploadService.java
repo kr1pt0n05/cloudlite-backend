@@ -34,15 +34,20 @@ public interface UploadService {
      * Streams a single file into the session.
      * The blob is written to storage and staged for commit; the file is not yet visible
      * to other users.
+     * <p>
+     * SHA-256 and byte count are computed during the single streaming write — the
+     * caller does not need to buffer content or supply these values explicitly.
      *
      * @param sessionId    the session to add the file to
      * @param ownerSubject the JWT {@code sub} claim used to verify session ownership
      * @param fileName     the filename as it should appear after commit
      * @param content      raw file bytes as a streaming {@link InputStream}
+     * @param mimeType     MIME type of the file (e.g. {@code "image/png"}), or {@code null} if unknown
      * @return the staged {@link UploadSessionFileEntity} with status UPLOADED
      * @throws IOException if the blob write fails
      */
-    UploadSessionFileEntity stageFile(UUID sessionId, String ownerSubject, String fileName, InputStream content)
+    UploadSessionFileEntity stageFile(UUID sessionId, String ownerSubject, String fileName,
+                                      InputStream content, String mimeType)
             throws IOException;
 
     /**
