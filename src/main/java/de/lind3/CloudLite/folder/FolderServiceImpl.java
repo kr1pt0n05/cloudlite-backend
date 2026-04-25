@@ -73,6 +73,9 @@ public class FolderServiceImpl implements FolderService {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Folder not found: " + folderId));
 
+        // Intentionally use findBySubject here: a read operation should not
+        // auto-provision a new user; if the subject is unknown, the folder
+        // cannot belong to them.
         UserEntity requester = userRepository.findBySubject(requesterSubject)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
