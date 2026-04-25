@@ -34,7 +34,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${ISSUER_URI:http://localhost:${KC_PORT:8080}/realms/cloudlite}
+          issuer-uri: ${ISSUER_URI:http://localhost:${KC_PORT:8080}/realms/development}
 
 server:
   port: ${PORT:8000}
