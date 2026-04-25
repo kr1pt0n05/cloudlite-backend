@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -26,7 +27,8 @@ import java.util.UUID;
  *
  * <pre>
  * POST   /api/upload/sessions               – create a session
- * POST   /api/upload/sessions/{id}/files    – stream a file into the session
+ * POST   /api/upload/sessions/{id}/files    – stream a single file into the session
+ * POST   /api/upload/sessions/{id}/files/batch – stream multiple files in one request
  * POST   /api/upload/sessions/{id}/commit   – publish all staged files
  * DELETE /api/upload/sessions/{id}          – cancel and discard the session
  * </pre>
@@ -86,6 +88,45 @@ public class UploadController {
                 file.getContentType());
 
         return ResponseEntity.status(HttpStatus.CREATED).body(StagedFileResponse.from(staged));
+    }
+
+    /**
+     * Streams multiple files into the session in a single request.
+     *
+     * <p>Each file part is processed sequentially so every file is individually streamed
+     * to storage without being loaded into heap memory. The SHA-256 digest and byte count
+     * for each file are computed during its single streaming write, exactly as with the
+     * single-file endpoint.
+     *
+     * <p>Files are staged in the order they appear in the multipart request. If any file
+     * fails (e.g. duplicate filename within the session) the request aborts immediately;
+     * files that were successfully staged before the failure remain staged and the caller
+     * should either commit or cancel the session accordingly.
+     *
+     * @param sessionId session to add the files to
+     * @param files     one or more multipart file parts; each part's {@code Content-Disposition}
+     *                  filename is used as the staged filename
+     * @param jwt       authenticated user's JWT
+     * @return 201 Created with a list of staged-file metadata entries, one per uploaded file
+     */
+    @PostMapping(value = "/{sessionId}/files/batch", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<List<StagedFileResponse>> stageFiles(
+            @PathVariable UUID sessionId,
+            @RequestPart("files") List<MultipartFile> files,
+            @AuthenticationPrincipal Jwt jwt) throws IOException {
+
+        List<StagedFileResponse> responses = new ArrayList<>(files.size());
+        for (MultipartFile file : files) {
+            String resolvedName = file.getOriginalFilename();
+            UploadSessionFileEntity staged = uploadService.stageFile(
+                    sessionId,
+                    jwt.getSubject(),
+                    resolvedName,
+                    file.getInputStream(),
+                    file.getContentType());
+            responses.add(StagedFileResponse.from(staged));
+        }
+        return ResponseEntity.status(HttpStatus.CREATED).body(responses);
     }
 
     /**
