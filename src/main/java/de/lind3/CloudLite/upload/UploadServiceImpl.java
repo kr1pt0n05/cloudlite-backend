@@ -3,10 +3,10 @@ package de.lind3.CloudLite.upload;
 import de.lind3.CloudLite.blob.BlobEntity;
 import de.lind3.CloudLite.file.FileEntity;
 import de.lind3.CloudLite.folder.FolderEntity;
+import de.lind3.CloudLite.folder.FolderService;
 import de.lind3.CloudLite.user.UserEntity;
 import de.lind3.CloudLite.blob.BlobRepository;
 import de.lind3.CloudLite.file.FileRepository;
-import de.lind3.CloudLite.folder.FolderRepository;
 import de.lind3.CloudLite.user.UserRepository;
 import de.lind3.CloudLite.blob.BlobStorageService;
 import de.lind3.CloudLite.blob.BlobWriteResult;
@@ -26,7 +26,7 @@ import java.util.UUID;
 public class UploadServiceImpl implements UploadService {
 
     private final UserRepository userRepository;
-    private final FolderRepository folderRepository;
+    private final FolderService folderService;
     private final FileRepository fileRepository;
     private final BlobRepository blobRepository;
     private final UploadSessionRepository sessionRepository;
@@ -42,13 +42,7 @@ public class UploadServiceImpl implements UploadService {
     public UploadSessionEntity createSession(String ownerSubject, UUID targetFolderId) {
         UserEntity owner = resolveOrProvisionUser(ownerSubject);
 
-        FolderEntity folder = folderRepository.findByIdAndDeletedAtIsNull(targetFolderId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Folder not found: " + targetFolderId));
-
-        if (!folder.getOwner().getId().equals(owner.getId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Folder does not belong to the requesting user");
-        }
+        FolderEntity folder = folderService.getFolder(targetFolderId, ownerSubject);
 
         UploadSessionEntity session = new UploadSessionEntity();
         session.setOwner(owner);

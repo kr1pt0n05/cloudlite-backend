@@ -41,6 +41,7 @@ public class SecurityConfigDev {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/api/files/**").authenticated()
                         .requestMatchers("/api/upload/**").authenticated()
+                        .requestMatchers("/api/folders/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/**").permitAll()
                         .requestMatchers(HttpMethod.PUT, "/**").permitAll()
                         .requestMatchers(HttpMethod.PATCH, "/**").permitAll()
