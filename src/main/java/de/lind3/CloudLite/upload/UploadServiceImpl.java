@@ -65,8 +65,8 @@ public class UploadServiceImpl implements UploadService {
      *
      * <p>The SHA-256 digest and byte count are derived from a single streaming write via
      * {@link BlobStorageService#store} — the content is never loaded into heap memory.
-     * If an identical blob already exists (matched by SHA-256) the newly written bytes are
-     * removed from storage and the existing {@link BlobEntity} is reused (deduplication).
+     * Each upload always creates a new {@link BlobEntity}; uploading identical content
+     * multiple times is permitted and results in independent blobs.
      *
      * <p>The database transaction is opened <em>after</em> the blob has been written to
      * avoid holding a DB connection open during potentially long I/O. If the transaction
@@ -118,27 +118,13 @@ public class UploadServiceImpl implements UploadService {
     protected UploadSessionFileEntity persistStagedFile(UploadSessionEntity session,
                                                         String fileName,
                                                         String mimeType,
-                                                        BlobWriteResult result) throws IOException {
-        // Deduplication: reuse existing blob if SHA-256 matches
-        BlobEntity blob = blobRepository.findBySha256(result.sha256())
-                .orElseGet(() -> {
-                    BlobEntity newBlob = new BlobEntity();
-                    newBlob.setStorageKey(result.storageKey());
-                    newBlob.setSha256(result.sha256());
-                    newBlob.setSizeBytes(result.sizeBytes());
-                    newBlob.setMimeType(mimeType);
-                    return blobRepository.save(newBlob);
-                });
-
-        // If a duplicate blob was found, the newly written bytes are orphaned on disk.
-        // A maintenance task is responsible for cleaning those up.
-        if (!blob.getStorageKey().equals(result.storageKey())) {
-            try {
-                blobStorageService.delete(result.storageKey());
-            } catch (IOException e) {
-                throw new RuntimeException("Failed to delete duplicate blob from storage", e);
-            }
-        }
+                                                        BlobWriteResult result) {
+        BlobEntity blob = new BlobEntity();
+        blob.setStorageKey(result.storageKey());
+        blob.setSha256(result.sha256());
+        blob.setSizeBytes(result.sizeBytes());
+        blob.setMimeType(mimeType);
+        blobRepository.save(blob);
 
         UploadSessionFileEntity sessionFile = new UploadSessionFileEntity();
         sessionFile.setSession(session);
