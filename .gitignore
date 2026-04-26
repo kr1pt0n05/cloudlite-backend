@@ -39,3 +39,5 @@ export/
 .codex
 .env
 /.uploads/
+/test-files/
+/scripts/test-files/

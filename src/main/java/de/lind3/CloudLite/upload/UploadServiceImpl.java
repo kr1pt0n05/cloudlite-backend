@@ -11,6 +11,7 @@ import de.lind3.CloudLite.folder.FolderService;
 import de.lind3.CloudLite.user.UserEntity;
 import de.lind3.CloudLite.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +25,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class UploadServiceImpl implements UploadService {
 
     private final UserRepository userRepository;
@@ -68,6 +70,7 @@ public class UploadServiceImpl implements UploadService {
     @Override
     public List<UploadSessionFileEntity> stageFilesBatch(UUID sessionId, String ownerSubject,
                                                          List<MultipartFile> files) throws IOException {
+        
         if (files.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one file is required");
         }

@@ -29,8 +29,8 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
+      max-file-size: 25MB
+      max-request-size: 100MB
 
   security:
     oauth2:
@@ -40,6 +40,9 @@ spring:
 
 server:
   port: ${PORT:8000}
+  tomcat:
+    max-part-count: 250
+    max-swallow-size: 100MB
 
 keycloak:
   frontend:
