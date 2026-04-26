@@ -13,6 +13,8 @@ security:
   - bearerAuth: []
 
 tags:
+  - name: Folders
+    description: Virtual folder hierarchy (create, get, list, rename, move, delete)
   - name: Upload Sessions
     description: Batch-upload session lifecycle (create → stage files → commit or cancel)
 
@@ -21,6 +23,48 @@ tags:
 # ---------------------------------------------------------------------------
 
 paths:
+
+  # ---------------------------------------------------------------------------
+  # Folders
+  # ---------------------------------------------------------------------------
+
+  /api/folders:
+    post:
+      tags: [Folders]
+      summary: Create a folder
+      description: >
+        Creates a new folder for the authenticated user.
+        The folder name must be unique within the given parent (or among root folders
+        if `parentId` is omitted). The parent folder, when specified, must exist and
+        belong to the requesting user.
+      operationId: createFolder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFolderRequest'
+      responses:
+        '201':
+          description: Folder created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FolderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  # ---------------------------------------------------------------------------
+  # Upload Sessions
+  # ---------------------------------------------------------------------------
 
   /api/upload/sessions:
     post:
@@ -52,65 +96,19 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
-  /api/upload/sessions/{sessionId}/files:
-    post:
-      tags: [Upload Sessions]
-      summary: Stage a single file
-      description: >
-        Streams a single file into the session as `multipart/form-data`.
-        The SHA-256 digest and byte count are computed during the single streaming
-        write — the content is never buffered in heap memory by the service layer.
-        An optional `fileName` query parameter overrides the multipart filename.
-      operationId: stageFile
-      parameters:
-        - $ref: '#/components/parameters/SessionId'
-        - name: fileName
-          in: query
-          required: false
-          description: Override the filename derived from the multipart part.
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [file]
-              properties:
-                file:
-                  type: string
-                  format: binary
-                  description: Binary file content.
-      responses:
-        '201':
-          description: File staged successfully.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StagedFileResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-
   /api/upload/sessions/{sessionId}/files/batch:
     post:
       tags: [Upload Sessions]
-      summary: Stage multiple files in one request
+      summary: Stage one or more files
       description: >
-        Streams multiple files into the session in a single `multipart/form-data`
-        request. Files are processed sequentially in the order they appear in the
-        request. If any file fails (e.g. duplicate filename within the session)
-        the request aborts immediately; files that were successfully staged before
-        the failure remain staged and the caller should either commit or cancel the
-        session accordingly.
+        Streams one or more files into the session in a single `multipart/form-data`
+        request. All duplicate-name checks are performed with a single database query
+        before any storage writes, so the request is rejected atomically if any
+        filename is already staged in the session or appears more than once in the
+        request. Files are then streamed individually to the storage backend without
+        being buffered in heap memory.
+        If a storage or persistence error occurs after some files have been written,
+        the already-stored blobs are cleaned up on a best-effort basis.
       operationId: stageFiles
       parameters:
         - $ref: '#/components/parameters/SessionId'
@@ -236,6 +234,15 @@ components:
         type: string
         format: uuid
         example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+    FolderId:
+      name: folderId
+      in: path
+      required: true
+      description: UUID of the folder.
+      schema:
+        type: string
+        format: uuid
+        example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
 
   # -------------------------------------------------------------------------
   # Schemas (DTOs)
@@ -244,6 +251,22 @@ components:
   schemas:
 
     # -- Request bodies -------------------------------------------------------
+
+    CreateFolderRequest:
+      type: object
+      required: [name]
+      description: Request body for creating a new folder.
+      properties:
+        name:
+          type: string
+          description: Folder name. Must be unique within the parent (or among root folders).
+          example: Documents
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: UUID of the parent folder. Omit to create a root folder.
+          example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
 
     CreateSessionRequest:
       type: object
@@ -257,6 +280,41 @@ components:
           example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
 
     # -- Response objects -----------------------------------------------------
+
+    FolderResponse:
+      type: object
+      description: Metadata for a virtual folder.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique folder identifier.
+          example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        name:
+          type: string
+          description: Folder name.
+          example: Documents
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: UUID of the parent folder, or null for root folders.
+          example: null
+        ownerId:
+          type: string
+          format: uuid
+          description: UUID of the folder owner.
+          example: a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when the folder was created.
+          example: '2026-04-25T20:00:00Z'
+        updatedAt:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp of the last update.
+          example: '2026-04-25T20:00:00Z'
 
     SessionResponse:
       type: object
@@ -293,11 +351,6 @@ components:
           type: string
           description: Name the file will have after the session is committed.
           example: report.pdf
-        blobId:
-          type: string
-          format: uuid
-          description: Identifier of the underlying blob storage record.
-          example: 9b2c3d4e-5f6a-7b8c-9d0e-1f2a3b4c5d6e
         sizeBytes:
           type: integer
           format: int64
@@ -369,31 +422,27 @@ components:
     UploadSessionFileStatus:
       type: string
       description: Lifecycle status of a file within an upload session.
-      enum: [PENDING, UPLOADED, COMMITTED, FAILED]
+      enum: [UPLOADED, COMMITTED, FAILED]
       example: UPLOADED
 
     # -- Error ----------------------------------------------------------------
 
     ErrorResponse:
       type: object
-      description: Standard error body returned by Spring Boot for 4xx/5xx responses.
+      description: Standard error body returned by GlobalExceptionHandler for 4xx/5xx responses.
       properties:
-        timestamp:
-          type: string
-          format: date-time
-          example: '2026-04-25T20:00:00Z'
         status:
           type: integer
+          description: HTTP status code.
           example: 404
         error:
           type: string
+          description: HTTP reason phrase.
           example: Not Found
         message:
           type: string
+          description: Human-readable description of what went wrong.
           example: "Folder not found: 3fa85f64-5717-4562-b3fc-2c963f66afa6"
-        path:
-          type: string
-          example: /api/upload/sessions
 
   # -------------------------------------------------------------------------
   # Reusable responses
