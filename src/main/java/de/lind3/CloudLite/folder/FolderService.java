@@ -60,4 +60,21 @@ public interface FolderService {
      * @param requesterSubject JWT {@code sub} claim of the requesting user
      */
     void deleteFolder(UUID folderId, String requesterSubject);
+
+    /**
+     * Returns the folder with the given ID, verifying it belongs to the requester.
+     *
+     * @param folderId         ID of the folder to retrieve
+     * @param requesterSubject JWT {@code sub} claim of the requesting user
+     * @return the folder entity
+     */
+    FolderEntity getFolder(UUID folderId, String requesterSubject);
+
+    /**
+     * Returns {@code true} if a non-deleted folder with the given ID exists.
+     *
+     * @param folderId ID of the folder to check
+     * @return whether the folder exists
+     */
+    boolean folderExists(UUID folderId);
 }

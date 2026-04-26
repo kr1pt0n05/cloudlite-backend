@@ -1,23 +1,24 @@
 package de.lind3.CloudLite.upload;
 
 import de.lind3.CloudLite.blob.BlobEntity;
-import de.lind3.CloudLite.file.FileEntity;
-import de.lind3.CloudLite.folder.FolderEntity;
-import de.lind3.CloudLite.user.UserEntity;
 import de.lind3.CloudLite.blob.BlobRepository;
-import de.lind3.CloudLite.file.FileRepository;
-import de.lind3.CloudLite.folder.FolderRepository;
-import de.lind3.CloudLite.user.UserRepository;
 import de.lind3.CloudLite.blob.BlobStorageService;
 import de.lind3.CloudLite.blob.BlobWriteResult;
+import de.lind3.CloudLite.file.FileEntity;
+import de.lind3.CloudLite.file.FileRepository;
+import de.lind3.CloudLite.folder.FolderEntity;
+import de.lind3.CloudLite.folder.FolderService;
+import de.lind3.CloudLite.user.UserEntity;
+import de.lind3.CloudLite.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
-import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -26,7 +27,7 @@ import java.util.UUID;
 public class UploadServiceImpl implements UploadService {
 
     private final UserRepository userRepository;
-    private final FolderRepository folderRepository;
+    private final FolderService folderService;
     private final FileRepository fileRepository;
     private final BlobRepository blobRepository;
     private final UploadSessionRepository sessionRepository;
@@ -42,13 +43,7 @@ public class UploadServiceImpl implements UploadService {
     public UploadSessionEntity createSession(String ownerSubject, UUID targetFolderId) {
         UserEntity owner = resolveOrProvisionUser(ownerSubject);
 
-        FolderEntity folder = folderRepository.findByIdAndDeletedAtIsNull(targetFolderId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Folder not found: " + targetFolderId));
-
-        if (!folder.getOwner().getId().equals(owner.getId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Folder does not belong to the requesting user");
-        }
+        FolderEntity folder = folderService.getFolder(targetFolderId, ownerSubject);
 
         UploadSessionEntity session = new UploadSessionEntity();
         session.setOwner(owner);
@@ -57,26 +52,26 @@ public class UploadServiceImpl implements UploadService {
     }
 
     // -------------------------------------------------------------------------
-    // stageFile
+    // stageFilesBatch
     // -------------------------------------------------------------------------
 
     /**
-     * Streams the file to blob storage and stages metadata in the session.
+     * Streams all files to blob storage and stages their metadata in the session.
      *
-     * <p>The SHA-256 digest and byte count are derived from a single streaming write via
-     * {@link BlobStorageService#store} — the content is never loaded into heap memory.
-     * Each upload always creates a new {@link BlobEntity}; uploading identical content
-     * multiple times is permitted and results in independent blobs.
+     * <p>Duplicate-name validation is performed with a single IN-query before any I/O.
+     * All blob writes happen outside a transaction; a single transactional batch insert
+     * records all staged-file metadata at the end.
      *
-     * <p>The database transaction is opened <em>after</em> the blob has been written to
-     * avoid holding a DB connection open during potentially long I/O. If the transaction
-     * fails after the write, the orphaned blob will be cleaned up by a future maintenance
-     * task.
+     * <p>If storage or persistence fails, every blob written so far is deleted on a
+     * best-effort basis to avoid orphaned files.
      */
     @Override
-    public UploadSessionFileEntity stageFile(UUID sessionId, String ownerSubject,
-                                             String fileName, InputStream content,
-                                             String mimeType) throws IOException {
+    public List<UploadSessionFileEntity> stageFilesBatch(UUID sessionId, String ownerSubject,
+                                                         List<MultipartFile> files) throws IOException {
+        if (files.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one file is required");
+        }
+
         // --- pre-flight checks (short reads, no long-lived TX) ---
         UserEntity owner = userRepository.findBySubject(ownerSubject)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
@@ -88,50 +83,70 @@ public class UploadServiceImpl implements UploadService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Session is not OPEN (current status: " + session.getStatus() + ")");
         }
-        if (fileName == null || fileName.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "fileName must not be blank");
-        }
-        if (sessionFileRepository.existsBySessionAndFileName(session, fileName)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "A file named '" + fileName + "' is already staged in this session");
-        }
 
-        // --- stream content to storage (outside any transaction) ---
-        String suggestedKey = UUID.randomUUID().toString();
-        BlobWriteResult result = blobStorageService.store(content, suggestedKey);
-
-        // --- persist metadata in a transaction ---
-        try {
-            return persistStagedFile(session, fileName, mimeType, result);
-        } catch (RuntimeException e) {
-            // Best-effort cleanup of the orphaned blob if the DB write fails
-            try {
-                blobStorageService.delete(result.storageKey());
-            } catch (IOException ignored) {
-                // Log in production; acceptable for MVP
+        // Collect and validate filenames
+        // ToDo Replace this with a map?
+        List<String> names = new ArrayList<>(files.size());
+        for (MultipartFile file : files) {
+            String name = file.getOriginalFilename();
+            if (name == null || name.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "fileName must not be blank");
             }
+            if (names.contains(name)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Duplicate filename in request: " + name);
+            }
+            names.add(name);
+        }
+
+        // Single query to check for already-staged names
+        List<String> existing = sessionFileRepository.findExistingFileNamesInSession(session, names);
+        if (!existing.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Files already staged in this session: " + String.join(", ", existing));
+        }
+
+        // --- stream all files to storage (outside any transaction) ---
+        // results contains only successfully completed writes; any store() that throws
+        // leaves nothing to clean up from that call (the blob was never fully persisted).
+        List<BlobWriteResult> results = new ArrayList<>(files.size());
+        try {
+            for (MultipartFile file : files) {
+                results.add(blobStorageService.store(file.getInputStream(), UUID.randomUUID().toString()));
+            }
+        } catch (IOException | RuntimeException e) {
+            deleteBlobs(results);
+            throw e;
+        }
+
+        // --- persist all metadata in a single transaction ---
+        try {
+            return persistStagedFilesBatch(session, files, results);
+        } catch (RuntimeException e) {
+            deleteBlobs(results);
             throw e;
         }
     }
 
     @Transactional
-    protected UploadSessionFileEntity persistStagedFile(UploadSessionEntity session,
-                                                        String fileName,
-                                                        String mimeType,
-                                                        BlobWriteResult result) {
-        BlobEntity blob = new BlobEntity();
-        blob.setStorageKey(result.storageKey());
-        blob.setSha256(result.sha256());
-        blob.setSizeBytes(result.sizeBytes());
-        blob.setMimeType(mimeType);
-        blobRepository.save(blob);
+    protected List<UploadSessionFileEntity> persistStagedFilesBatch(UploadSessionEntity session,
+                                                                     List<MultipartFile> files,
+                                                                     List<BlobWriteResult> results) {
+        List<UploadSessionFileEntity> entities = new ArrayList<>(files.size());
+        for (int i = 0; i < files.size(); i++) {
+            MultipartFile file = files.get(i);
+            BlobWriteResult result = results.get(i);
 
-        UploadSessionFileEntity sessionFile = new UploadSessionFileEntity();
-        sessionFile.setSession(session);
-        sessionFile.setFileName(fileName);
-        sessionFile.setBlob(blob);
-        sessionFile.setStatus(UploadSessionFileStatus.UPLOADED);
-        return sessionFileRepository.save(sessionFile);
+            UploadSessionFileEntity entity = new UploadSessionFileEntity();
+            entity.setSession(session);
+            entity.setFileName(file.getOriginalFilename());
+            entity.setStorageKey(result.storageKey());
+            entity.setSha256(result.sha256());
+            entity.setSizeBytes(result.sizeBytes());
+            entity.setMimeType(file.getContentType());
+            entities.add(entity);
+        }
+        return sessionFileRepository.saveAll(entities);
     }
 
     // -------------------------------------------------------------------------
@@ -164,15 +179,30 @@ public class UploadServiceImpl implements UploadService {
             }
         }
 
-        List<FileEntity> published = staged.stream().map(sf -> {
+        // Create BlobEntity records from inline staged metadata (batch)
+        List<BlobEntity> blobs = new ArrayList<>(staged.size());
+        for (UploadSessionFileEntity sf : staged) {
+            BlobEntity blob = new BlobEntity();
+            blob.setStorageKey(sf.getStorageKey());
+            blob.setSha256(sf.getSha256());
+            blob.setSizeBytes(sf.getSizeBytes());
+            blob.setMimeType(sf.getMimeType());
+            blobs.add(blob);
+        }
+        blobRepository.saveAll(blobs);
+
+        // Create FileEntity records linked to the new blobs
+        List<FileEntity> published = new ArrayList<>(staged.size());
+        for (int i = 0; i < staged.size(); i++) {
+            UploadSessionFileEntity sf = staged.get(i);
             FileEntity file = new FileEntity();
             file.setFolder(targetFolder);
             file.setName(sf.getFileName());
             file.setOwner(owner);
-            file.setBlob(sf.getBlob());
+            file.setBlob(blobs.get(i));
             sf.setStatus(UploadSessionFileStatus.COMMITTED);
-            return file;
-        }).toList();
+            published.add(file);
+        }
 
         fileRepository.saveAll(published);
         sessionFileRepository.saveAll(staged);
@@ -216,5 +246,16 @@ public class UploadServiceImpl implements UploadService {
     private UserEntity resolveOrProvisionUser(String subject) {
         return userRepository.findBySubject(subject)
                 .orElseGet(() -> userRepository.save(new UserEntity(subject)));
+    }
+
+    /** Best-effort deletion of blobs that were written before a failure. */
+    private void deleteBlobs(List<BlobWriteResult> results) {
+        for (BlobWriteResult r : results) {
+            try {
+                blobStorageService.delete(r.storageKey());
+            } catch (IOException ignored) {
+                // Log in production; acceptable for MVP
+            }
+        }
     }
 }

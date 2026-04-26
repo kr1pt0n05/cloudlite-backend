@@ -33,7 +33,7 @@ public class LocalBlobStorageService implements BlobStorageService {
     private final Path basePath;
 
     public LocalBlobStorageService(
-            @Value("${file.storage.base-path:./uploads}") String basePath) {
+            @Value("${file.storage.base-path:./.uploads}") String basePath) {
         this.basePath = Path.of(basePath).toAbsolutePath().normalize();
     }
 
