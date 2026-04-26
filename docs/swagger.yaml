@@ -14,9 +14,9 @@ security:
 
 tags:
   - name: Folders
-    description: Virtual folder hierarchy (create, get, list, rename, move, delete)
+    description: Virtual folder hierarchy endpoints currently implemented by the backend.
   - name: Upload Sessions
-    description: Batch-upload session lifecycle (create → stage files → commit or cancel)
+    description: Batch-upload session lifecycle (create -> stage files -> commit or cancel)
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -61,6 +61,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   # ---------------------------------------------------------------------------
   # Upload Sessions
@@ -95,6 +97,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /api/upload/sessions/{sessionId}/files/batch:
     post:
@@ -145,6 +149,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /api/upload/sessions/{sessionId}/commit:
     post:
@@ -177,6 +183,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /api/upload/sessions/{sessionId}:
     delete:
@@ -184,7 +192,8 @@ paths:
       summary: Cancel an upload session
       description: >
         Cancels an open session and discards all staged metadata.
-        Orphaned blobs on disk are cleaned up by a background maintenance task.
+        The session status changes to `CANCELLED`; staged blob files are left for
+        later cleanup.
       operationId: cancelSession
       parameters:
         - $ref: '#/components/parameters/SessionId'
@@ -199,6 +208,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
 # ---------------------------------------------------------------------------
 # Components
@@ -259,6 +270,7 @@ components:
       properties:
         name:
           type: string
+          minLength: 1
           description: Folder name. Must be unique within the parent (or among root folders).
           example: Documents
         parentId:
@@ -283,6 +295,7 @@ components:
 
     FolderResponse:
       type: object
+      required: [id, name, ownerId, createdAt, updatedAt]
       description: Metadata for a virtual folder.
       properties:
         id:
@@ -318,6 +331,7 @@ components:
 
     SessionResponse:
       type: object
+      required: [id, targetFolderId, status, createdAt]
       description: Metadata of an upload session.
       properties:
         id:
@@ -340,6 +354,7 @@ components:
 
     StagedFileResponse:
       type: object
+      required: [id, fileName, sizeBytes, sha256, status, createdAt]
       description: Metadata for a file that has been staged inside an upload session.
       properties:
         id:
@@ -370,6 +385,7 @@ components:
 
     PublishedFileResponse:
       type: object
+      required: [id, name, folderId, blobId, sizeBytes, sha256, createdAt]
       description: Metadata for a file that has been published into a folder after session commit.
       properties:
         id:
@@ -429,6 +445,7 @@ components:
 
     ErrorResponse:
       type: object
+      required: [status, error, message]
       description: Standard error body returned by GlobalExceptionHandler for 4xx/5xx responses.
       properties:
         status:
@@ -475,6 +492,12 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     Conflict:
       description: A resource with the same name already exists in the target location.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalServerError:
+      description: An unexpected server error occurred.
       content:
         application/json:
           schema:
