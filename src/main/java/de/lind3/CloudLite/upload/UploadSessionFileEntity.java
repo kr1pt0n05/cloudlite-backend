@@ -1,6 +1,5 @@
 package de.lind3.CloudLite.upload;
 
-import de.lind3.CloudLite.blob.BlobEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -13,8 +12,9 @@ import java.util.UUID;
 
 /**
  * Represents a single file entry staged inside an {@link UploadSessionEntity}.
- * The {@link BlobEntity} link is set once the binary content has been streamed to storage;
- * status advances through PENDING → UPLOADED → COMMITTED (or FAILED).
+ * Blob metadata is stored inline so that {@code BlobEntity} records are only
+ * created at commit time, enabling a single batch insert per session commit.
+ * Status advances through UPLOADED → COMMITTED (or FAILED).
  */
 @Entity
 @Table(
@@ -38,17 +38,25 @@ public class UploadSessionFileEntity {
     @Column(name = "file_name", nullable = false)
     private String fileName;
 
-    /**
-     * Set once the blob has been written to the storage backend.
-     * Null while the file is still being streamed (PENDING).
-     */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "blob_id")
-    private BlobEntity blob;
+    /** Opaque key used to locate the blob in the storage backend. */
+    @Column(name = "storage_key", nullable = false)
+    private String storageKey;
+
+    /** Hex-encoded SHA-256 digest of the raw file content. */
+    @Column(name = "sha256", length = 64, nullable = false)
+    private String sha256;
+
+    /** Exact byte size of the stored content. */
+    @Column(name = "size_bytes", nullable = false)
+    private Long sizeBytes;
+
+    /** MIME type detected or provided at upload time (e.g., "image/png"). */
+    @Column(name = "mime_type")
+    private String mimeType;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private UploadSessionFileStatus status = UploadSessionFileStatus.PENDING;
+    private UploadSessionFileStatus status = UploadSessionFileStatus.UPLOADED;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
