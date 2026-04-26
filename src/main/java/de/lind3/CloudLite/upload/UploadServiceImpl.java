@@ -68,7 +68,7 @@ public class UploadServiceImpl implements UploadService {
     @Override
     public List<UploadSessionFileEntity> stageFilesBatch(UUID sessionId, String ownerSubject,
                                                          List<MultipartFile> files) throws IOException {
-        if (files == null || files.isEmpty()) {
+        if (files.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one file is required");
         }
 
@@ -106,6 +106,8 @@ public class UploadServiceImpl implements UploadService {
         }
 
         // --- stream all files to storage (outside any transaction) ---
+        // results contains only successfully completed writes; any store() that throws
+        // leaves nothing to clean up from that call (the blob was never fully persisted).
         List<BlobWriteResult> results = new ArrayList<>(files.size());
         try {
             for (MultipartFile file : files) {
