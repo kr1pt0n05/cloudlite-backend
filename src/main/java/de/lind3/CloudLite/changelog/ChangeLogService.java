@@ -1,6 +1,7 @@
 package de.lind3.CloudLite.changelog;
 
 import de.lind3.CloudLite.file.FileEntity;
+import de.lind3.CloudLite.folder.FolderEntity;
 
 import java.util.List;
 
@@ -14,17 +15,15 @@ public interface ChangeLogService {
      *
      * @param eventType  action that happened
      * @param entityType changed entity type
-     * @param path       original or current path for the changed entity
-     * @param newPath    target path for move/rename events, otherwise {@code null}
      * @param file       changed file reference, otherwise {@code null}
+     * @param folder     changed folder reference, otherwise {@code null}
      * @return persisted change log entity
      */
     ChangeLogEntity logChange(
             EventType eventType,
             EntityType entityType,
-            String path,
-            String newPath,
-            FileEntity file
+            FileEntity file,
+            FolderEntity folder
     );
 
     /**

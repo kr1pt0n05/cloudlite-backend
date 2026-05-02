@@ -1,6 +1,7 @@
 package de.lind3.CloudLite.changelog;
 
 import de.lind3.CloudLite.file.FileEntity;
+import de.lind3.CloudLite.folder.FolderEntity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,17 +20,15 @@ public class ChangeLogServiceImpl implements ChangeLogService {
     public ChangeLogEntity logChange(
             EventType eventType,
             EntityType entityType,
-            String path,
-            String newPath,
-            FileEntity file
+            FileEntity file,
+            FolderEntity folder
     ) {
         ChangeLogEntity changeLog = new ChangeLogEntity();
         changeLog.setEventType(eventType);
         changeLog.setEntityType(entityType);
         changeLog.setTimestamp(Instant.now());
-        changeLog.setPath(path);
-        changeLog.setNewPath(newPath);
         changeLog.setFile(file);
+        changeLog.setFolder(folder);
 
         return changeLogRepository.save(changeLog);
     }
