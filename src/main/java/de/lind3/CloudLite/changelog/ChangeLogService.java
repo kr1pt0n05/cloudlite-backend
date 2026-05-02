@@ -36,4 +36,13 @@ public interface ChangeLogService {
      * @return persisted change log entities
      */
     List<ChangeLogEntity> logChanges(List<ChangeLogEntity> changeLogs);
+
+    /**
+     * Returns all change log rows for the requesting user after the given log ID.
+     *
+     * @param latestSyncedId   last log ID already known to the client
+     * @param requesterSubject JWT {@code sub} claim of the requesting user
+     * @return user-scoped change log rows ordered by ID ascending
+     */
+    List<ChangeLogEntity> getChangesSince(Long latestSyncedId, String requesterSubject);
 }

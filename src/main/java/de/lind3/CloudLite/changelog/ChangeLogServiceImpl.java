@@ -3,9 +3,12 @@ package de.lind3.CloudLite.changelog;
 import de.lind3.CloudLite.file.FileEntity;
 import de.lind3.CloudLite.folder.FolderEntity;
 import de.lind3.CloudLite.user.UserEntity;
+import de.lind3.CloudLite.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.List;
@@ -15,6 +18,7 @@ import java.util.List;
 public class ChangeLogServiceImpl implements ChangeLogService {
 
     private final ChangeLogRepository changeLogRepository;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional
@@ -45,5 +49,17 @@ public class ChangeLogServiceImpl implements ChangeLogService {
                 .forEach(changeLog -> changeLog.setTimestamp(timestamp));
 
         return changeLogRepository.saveAll(changeLogs);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ChangeLogEntity> getChangesSince(Long latestSyncedId, String requesterSubject) {
+        if (latestSyncedId == null || latestSyncedId < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "latestSyncedId must be zero or greater");
+        }
+
+        return userRepository.findBySubject(requesterSubject)
+                .map(user -> changeLogRepository.findByUserAndIdGreaterThanOrderByIdAsc(user, latestSyncedId))
+                .orElseGet(List::of);
     }
 }
