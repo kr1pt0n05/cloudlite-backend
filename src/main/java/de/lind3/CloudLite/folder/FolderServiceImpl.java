@@ -60,7 +60,8 @@ public class FolderServiceImpl implements FolderService {
                 EventType.CREATE,
                 EntityType.DIRECTORY,
                 null,
-                savedFolder
+                savedFolder,
+                owner
         );
         return savedFolder;
     }

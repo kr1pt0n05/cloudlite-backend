@@ -218,7 +218,7 @@ public class UploadServiceImpl implements UploadService {
         session.setStatus(UploadSessionStatus.COMMITTED);
         sessionRepository.save(session);
 
-        changeLogService.logChanges(buildCommittedFileChangeLogs(savedFiles));
+        changeLogService.logChanges(buildCommittedFileChangeLogs(savedFiles, owner));
 
         return savedFiles;
     }
@@ -269,13 +269,14 @@ public class UploadServiceImpl implements UploadService {
         }
     }
 
-    private List<ChangeLogEntity> buildCommittedFileChangeLogs(List<FileEntity> files) {
+    private List<ChangeLogEntity> buildCommittedFileChangeLogs(List<FileEntity> files, UserEntity user) {
         List<ChangeLogEntity> changeLogs = new ArrayList<>(files.size());
         for (FileEntity file : files) {
             ChangeLogEntity changeLog = new ChangeLogEntity();
             changeLog.setEventType(EventType.CREATE);
             changeLog.setEntityType(EntityType.FILE);
             changeLog.setFile(file);
+            changeLog.setUser(user);
             changeLogs.add(changeLog);
         }
         return changeLogs;

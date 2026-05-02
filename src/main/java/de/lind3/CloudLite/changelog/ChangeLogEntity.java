@@ -2,6 +2,7 @@ package de.lind3.CloudLite.changelog;
 
 import de.lind3.CloudLite.file.FileEntity;
 import de.lind3.CloudLite.folder.FolderEntity;
+import de.lind3.CloudLite.user.UserEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -58,4 +59,8 @@ public class ChangeLogEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "folder_id")
     private FolderEntity folder;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private UserEntity user;
 }
