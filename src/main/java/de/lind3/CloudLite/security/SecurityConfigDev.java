@@ -42,6 +42,8 @@ public class SecurityConfigDev {
                         .requestMatchers("/api/files/**").authenticated()
                         .requestMatchers("/api/upload/**").authenticated()
                         .requestMatchers("/api/folders/**").authenticated()
+                        .requestMatchers("/api/change-logs").authenticated()
+                        .requestMatchers("/api/change-logs/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/**").permitAll()
                         .requestMatchers(HttpMethod.PUT, "/**").permitAll()
                         .requestMatchers(HttpMethod.PATCH, "/**").permitAll()

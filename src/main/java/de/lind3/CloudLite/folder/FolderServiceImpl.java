@@ -1,5 +1,8 @@
 package de.lind3.CloudLite.folder;
 
+import de.lind3.CloudLite.changelog.ChangeLogService;
+import de.lind3.CloudLite.changelog.EntityType;
+import de.lind3.CloudLite.changelog.EventType;
 import de.lind3.CloudLite.user.UserEntity;
 import de.lind3.CloudLite.user.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +20,7 @@ public class FolderServiceImpl implements FolderService {
 
     private final FolderRepository folderRepository;
     private final UserRepository userRepository;
+    private final ChangeLogService changeLogService;
 
     // -------------------------------------------------------------------------
     // createFolder
@@ -51,7 +55,15 @@ public class FolderServiceImpl implements FolderService {
         folder.setName(name);
         folder.setParent(parent);
         folder.setOwner(owner);
-        return folderRepository.save(folder);
+        FolderEntity savedFolder = folderRepository.save(folder);
+        changeLogService.logChange(
+                EventType.CREATE,
+                EntityType.DIRECTORY,
+                null,
+                savedFolder,
+                owner
+        );
+        return savedFolder;
     }
 
     // -------------------------------------------------------------------------

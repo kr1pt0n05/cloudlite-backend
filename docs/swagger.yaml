@@ -17,6 +17,8 @@ tags:
     description: Virtual folder hierarchy endpoints currently implemented by the backend.
   - name: Upload Sessions
     description: Batch-upload session lifecycle (create -> stage files -> commit or cancel)
+  - name: Change Logs
+    description: User-scoped change log sync endpoint.
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -61,6 +63,37 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ---------------------------------------------------------------------------
+  # Change Logs
+  # ---------------------------------------------------------------------------
+
+  /api/change-logs:
+    get:
+      tags: [Change Logs]
+      summary: Get change logs since a synced ID
+      description: >
+        Returns all change log entries for the authenticated user with an ID greater
+        than `latestSyncedId`, ordered by ID ascending. Clients can pass the latest
+        log ID they have already synchronized and receive only newer changes.
+      operationId: getChangeLogsSince
+      parameters:
+        - $ref: '#/components/parameters/LatestSyncedId'
+      responses:
+        '200':
+          description: User-scoped change log entries newer than the provided ID.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChangeLogResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -254,6 +287,17 @@ components:
         type: string
         format: uuid
         example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+    LatestSyncedId:
+      name: latestSyncedId
+      in: query
+      required: false
+      description: Latest change log ID already synchronized by the client. Defaults to 0.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+        default: 0
+        example: 42
 
   # -------------------------------------------------------------------------
   # Schemas (DTOs)
@@ -427,6 +471,43 @@ components:
           description: ISO-8601 timestamp when the file was created.
           example: '2026-04-25T20:02:00Z'
 
+    ChangeLogResponse:
+      type: object
+      required: [id, eventType, entityType, timestamp, userId]
+      description: User-scoped change log entry for client synchronization.
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Monotonic change log identifier.
+          example: 43
+        eventType:
+          $ref: '#/components/schemas/EventType'
+        entityType:
+          $ref: '#/components/schemas/EntityType'
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO-8601 timestamp when the change was logged.
+          example: '2026-04-25T20:03:00Z'
+        fileId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Changed file ID, or null for folder-only events.
+          example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+        folderId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Changed folder ID, or null for file-only events.
+          example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        userId:
+          type: string
+          format: uuid
+          description: User that performed the change.
+          example: a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+
     # -- Enums ----------------------------------------------------------------
 
     UploadSessionStatus:
@@ -440,6 +521,18 @@ components:
       description: Lifecycle status of a file within an upload session.
       enum: [UPLOADED, COMMITTED, FAILED]
       example: UPLOADED
+
+    EventType:
+      type: string
+      description: Type of change that was logged.
+      enum: [CREATE, RENAME, MOVE, DELETE]
+      example: CREATE
+
+    EntityType:
+      type: string
+      description: Type of entity that changed.
+      enum: [FILE, DIRECTORY]
+      example: FILE
 
     # -- Error ----------------------------------------------------------------
 

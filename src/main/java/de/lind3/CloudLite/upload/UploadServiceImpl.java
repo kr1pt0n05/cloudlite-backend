@@ -4,6 +4,10 @@ import de.lind3.CloudLite.blob.BlobEntity;
 import de.lind3.CloudLite.blob.BlobRepository;
 import de.lind3.CloudLite.blob.BlobStorageService;
 import de.lind3.CloudLite.blob.BlobWriteResult;
+import de.lind3.CloudLite.changelog.ChangeLogEntity;
+import de.lind3.CloudLite.changelog.ChangeLogService;
+import de.lind3.CloudLite.changelog.EntityType;
+import de.lind3.CloudLite.changelog.EventType;
 import de.lind3.CloudLite.file.FileEntity;
 import de.lind3.CloudLite.file.FileRepository;
 import de.lind3.CloudLite.folder.FolderEntity;
@@ -35,6 +39,7 @@ public class UploadServiceImpl implements UploadService {
     private final UploadSessionRepository sessionRepository;
     private final UploadSessionFileRepository sessionFileRepository;
     private final BlobStorageService blobStorageService;
+    private final ChangeLogService changeLogService;
 
     // -------------------------------------------------------------------------
     // createSession
@@ -207,13 +212,15 @@ public class UploadServiceImpl implements UploadService {
             published.add(file);
         }
 
-        fileRepository.saveAll(published);
+        List<FileEntity> savedFiles = fileRepository.saveAll(published);
         sessionFileRepository.saveAll(staged);
 
         session.setStatus(UploadSessionStatus.COMMITTED);
         sessionRepository.save(session);
 
-        return published;
+        changeLogService.logChanges(buildCommittedFileChangeLogs(savedFiles, owner));
+
+        return savedFiles;
     }
 
     // -------------------------------------------------------------------------
@@ -260,5 +267,18 @@ public class UploadServiceImpl implements UploadService {
                 // Log in production; acceptable for MVP
             }
         }
+    }
+
+    private List<ChangeLogEntity> buildCommittedFileChangeLogs(List<FileEntity> files, UserEntity user) {
+        List<ChangeLogEntity> changeLogs = new ArrayList<>(files.size());
+        for (FileEntity file : files) {
+            ChangeLogEntity changeLog = new ChangeLogEntity();
+            changeLog.setEventType(EventType.CREATE);
+            changeLog.setEntityType(EntityType.FILE);
+            changeLog.setFile(file);
+            changeLog.setUser(user);
+            changeLogs.add(changeLog);
+        }
+        return changeLogs;
     }
 }
