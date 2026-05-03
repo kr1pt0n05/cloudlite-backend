@@ -41,3 +41,4 @@ export/
 /.uploads/
 /test-files/
 /scripts/test-files/
+/scripts/mapped-upload-files/

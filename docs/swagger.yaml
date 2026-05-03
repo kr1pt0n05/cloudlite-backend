@@ -174,11 +174,16 @@ paths:
       description: >
         Streams one or more files in a single `multipart/form-data` request.
         The request must include a JSON `mapping` part with one `fileId` to
-        folder `path` entry per file. Each multipart filename must be prefixed
-        with the same client-generated UUID. The UUID prefix is removed before
-        storing the file. The backend validates folder paths and filename
-        conflicts in the database before writing any file bytes, then streams
-        each file to `.uploads/<user-sub>/<folder path>/<filename>`.
+        folder `path` entry per file. Each multipart file part's
+        `Content-Disposition` filename must be:
+        `<fileId>-<userFileName>` or `<fileId>_<userFileName>`, where `fileId`
+        is the client-generated UUID also present in the mapping, and
+        `userFileName` is the real filename to store. Example:
+        `1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed-report.pdf`. The UUID prefix and
+        one optional `-` or `_` separator are removed before storing the file.
+        The backend validates folder paths and filename conflicts in the
+        database before writing any file bytes, then streams each file to
+        `.uploads/<user-sub>/<folder path>/<userFileName>`.
       operationId: uploadFiles
       requestBody:
         required: true
@@ -193,7 +198,11 @@ paths:
                   items:
                     type: string
                     format: binary
-                  description: One or more binary file parts with UUID-prefixed filenames.
+                  description: >
+                    One or more binary file parts. Each part filename must use
+                    `<fileId>-<userFileName>` or `<fileId>_<userFileName>`, for
+                    example
+                    `1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed-report.pdf`.
                 mapping:
                   $ref: '#/components/schemas/BatchUploadFileMappingRequest'
       responses:
@@ -345,10 +354,15 @@ components:
     UploadFileMappingRequest:
       type: object
       required: [fileId, path]
-      description: Destination mapping for one multipart file.
+      description: >
+        Destination mapping for one multipart file. `fileId` must match the UUID
+        prefix at the start of the corresponding multipart filename. The rest of
+        that filename, after one optional `-` or `_` separator, is treated as the
+        user's real filename.
       properties:
         fileId:
           type: string
+          format: uuid
           description: UUID prefix used in the multipart filename.
           example: 1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed
         path:

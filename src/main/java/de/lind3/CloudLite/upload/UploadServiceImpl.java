@@ -124,6 +124,7 @@ public class UploadServiceImpl implements UploadService {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Duplicate filename in upload target folder: " + clientFileName.fileName());
             }
+            // ToDO: Watch this. Maybe remove fs or db check? N+1 query
             if (fileRepository.existsByFolderAndNameAndDeletedAtIsNull(folder, clientFileName.fileName())) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "A file named '" + clientFileName.fileName() + "' already exists in " + folderPath);
