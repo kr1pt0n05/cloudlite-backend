@@ -133,8 +133,24 @@ public class FolderServiceImpl implements FolderService {
     // -------------------------------------------------------------------------
 
     @Override
+    @Transactional(readOnly = true)
     public List<FolderEntity> listSubFolders(UUID folderId, String requesterSubject) {
-        throw new UnsupportedOperationException("Not yet implemented");
+        UserEntity requester = userRepository.findBySubject(requesterSubject)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        if (folderId == null) {
+            return folderRepository.findByParentIsNullAndOwnerAndDeletedAtIsNull(requester);
+        }
+
+        FolderEntity parent = folderRepository.findByIdAndDeletedAtIsNull(folderId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Folder not found: " + folderId));
+        if (!parent.getOwner().getId().equals(requester.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Folder does not belong to the requesting user");
+        }
+
+        return folderRepository.findByParentAndOwnerAndDeletedAtIsNull(parent, requester);
     }
 
     // -------------------------------------------------------------------------

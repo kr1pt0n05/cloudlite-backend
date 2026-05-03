@@ -40,7 +40,7 @@ public interface FolderService {
     /**
      * Returns all non-deleted direct children of the given folder.
      *
-     * @param folderId         ID of the parent folder
+     * @param folderId         ID of the parent folder, or {@code null} for root folders
      * @param requesterSubject JWT {@code sub} claim of the requesting user
      * @return list of child folders
      */
