@@ -1,13 +1,6 @@
 package de.lind3.CloudLite.upload;
 
-import de.lind3.CloudLite.upload.CreateSessionRequest;
-import de.lind3.CloudLite.upload.PublishedFileResponse;
-import de.lind3.CloudLite.upload.SessionResponse;
-import de.lind3.CloudLite.upload.StagedFileResponse;
 import de.lind3.CloudLite.file.FileEntity;
-import de.lind3.CloudLite.upload.UploadSessionEntity;
-import de.lind3.CloudLite.upload.UploadSessionFileEntity;
-import de.lind3.CloudLite.upload.UploadService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -25,10 +18,9 @@ import java.util.UUID;
  * REST endpoints for the batch-upload session lifecycle.
  *
  * <pre>
- * POST   /api/upload/sessions                   – create a session
- * POST   /api/upload/sessions/{id}/files/batch  – stream one or more files into the session
- * POST   /api/upload/sessions/{id}/commit        – publish all staged files
- * DELETE /api/upload/sessions/{id}              – cancel and discard the session
+ * POST   /api/upload/sessions                   - create a session
+ * POST   /api/upload/sessions/{id}/files/batch  - stream files to mapped filesystem paths
+ * DELETE /api/upload/sessions/{id}              - cancel the session
  * </pre>
  */
 @RestController
@@ -39,72 +31,53 @@ public class UploadController {
     private final UploadService uploadService;
 
     /**
-     * Creates a new upload session targeting the given folder.
+     * Creates a new upload session.
      *
-     * @param request request body with {@code targetFolderId}
      * @param jwt     authenticated user's JWT
      * @return 201 Created with the session metadata
      */
     @PostMapping
     public ResponseEntity<SessionResponse> createSession(
-            @RequestBody CreateSessionRequest request,
+            @RequestBody(required = false) CreateSessionRequest request,
             @AuthenticationPrincipal Jwt jwt) {
 
-        UploadSessionEntity session = uploadService.createSession(jwt.getSubject(), request.targetFolderId());
+        UploadSessionEntity session = uploadService.createSession(jwt.getSubject());
         return ResponseEntity.status(HttpStatus.CREATED).body(SessionResponse.from(session));
     }
 
     /**
-     * Streams one or more files into the session in a single request.
+     * Streams one or more files to their mapped filesystem paths in a single request.
      *
-     * <p>All duplicate-name checks are performed with a single database query before any
-     * storage writes. Files are streamed individually to the storage backend without being
-     * buffered in heap memory.
+     * <p>The `mapping` JSON part must contain one entry per file. The multipart filename
+     * must start with the client-generated UUID referenced by that mapping.
      *
-     * <p>If any file fails, files already written to storage in the same request remain
-     * staged; the caller should either commit or cancel the session accordingly.
+     * <p>If any file fails, files already written in the same request are cleaned up on a
+     * best-effort basis and no file metadata is committed.
      *
      * @param sessionId session to add the files to
      * @param files     one or more multipart file parts; each part's {@code Content-Disposition}
-     *                  filename is used as the staged filename
+     *                  filename is used as the client-prefixed source filename
      * @param jwt       authenticated user's JWT
-     * @return 201 Created with a list of staged-file metadata entries, one per uploaded file
+     * @param mapping   JSON part mapping each file ID to a destination folder path
+     * @return 201 Created with a list of committed file metadata entries
      */
     @PostMapping(value = "/{sessionId}/files/batch", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<List<StagedFileResponse>> stageFiles(
+    public ResponseEntity<List<PublishedFileResponse>> uploadFiles(
             @PathVariable UUID sessionId,
             @RequestPart("files") List<MultipartFile> files,
+            @RequestPart("mapping") BatchUploadFileMappingRequest mapping,
             @AuthenticationPrincipal Jwt jwt) throws IOException {
 
-        List<UploadSessionFileEntity> staged = uploadService.stageFilesBatch(
-                sessionId, jwt.getSubject(), files);
-        List<StagedFileResponse> response = staged.stream()
-                .map(StagedFileResponse::from)
+        List<FileEntity> uploaded = uploadService.uploadFilesBatch(
+                sessionId, jwt.getSubject(), files, mapping);
+        List<PublishedFileResponse> response = uploaded.stream()
+                .map(PublishedFileResponse::from)
                 .toList();
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     /**
-     * Commits the session, atomically publishing all staged files into the target folder.
-     *
-     * @param sessionId session to commit
-     * @param jwt       authenticated user's JWT
-     * @return 200 OK with the list of newly visible file records
-     */
-    @PostMapping("/{sessionId}/commit")
-    public ResponseEntity<List<PublishedFileResponse>> commitSession(
-            @PathVariable UUID sessionId,
-            @AuthenticationPrincipal Jwt jwt) {
-
-        List<FileEntity> published = uploadService.commitSession(sessionId, jwt.getSubject());
-        List<PublishedFileResponse> response = published.stream()
-                .map(PublishedFileResponse::from)
-                .toList();
-        return ResponseEntity.ok(response);
-    }
-
-    /**
-     * Cancels an open session, discarding all staged metadata.
+     * Cancels an open session.
      *
      * @param sessionId session to cancel
      * @param jwt       authenticated user's JWT

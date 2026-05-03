@@ -17,5 +17,7 @@ public interface FolderRepository extends JpaRepository<FolderEntity, UUID> {
 
     Optional<FolderEntity> findByIdAndDeletedAtIsNull(UUID id);
 
+    Optional<FolderEntity> findByOwnerAndPathAndDeletedAtIsNull(UserEntity owner, String path);
+
     boolean existsByParentAndOwnerAndNameAndDeletedAtIsNull(FolderEntity parent, UserEntity owner, String name);
 }

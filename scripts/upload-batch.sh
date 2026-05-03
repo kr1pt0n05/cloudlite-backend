@@ -8,6 +8,7 @@ CONNECT_TIMEOUT="${CONNECT_TIMEOUT:-10}"
 MAX_TIME="${MAX_TIME:-300}"
 SESSION_ID="${SESSION_ID:-${1:-}}"
 TOKEN="${TOKEN:-${2:-}}"
+DESTINATION_PATH="${DESTINATION_PATH:-${3:-}}"
 
 if [[ -z "$SESSION_ID" ]]; then
   echo "SESSION_ID is required. Usage: SESSION_ID=<uuid> TOKEN=<jwt> $0"
@@ -16,6 +17,11 @@ fi
 
 if [[ -z "$TOKEN" ]]; then
   echo "TOKEN is required. Usage: SESSION_ID=<uuid> TOKEN=<jwt> $0"
+  exit 1
+fi
+
+if [[ -z "$DESTINATION_PATH" ]]; then
+  echo "DESTINATION_PATH is required. Usage: SESSION_ID=<uuid> TOKEN=<jwt> DESTINATION_PATH=/Folder $0"
   exit 1
 fi
 
@@ -48,10 +54,22 @@ echo "Started at $start_human"
 
 for ((i=0; i<total; i+=BATCH_SIZE)); do
   ARGS=()
+  mapping='{"files":['
+  first_mapping=true
 
   for f in "${files[@]:i:BATCH_SIZE}"; do
-    ARGS+=(-F "files=@${f}")
+    file_id="$(cat /proc/sys/kernel/random/uuid)"
+    upload_name="${file_id}-$(basename "$f")"
+    ARGS+=(-F "files=@${f};filename=${upload_name}")
+    if [[ "$first_mapping" == true ]]; then
+      first_mapping=false
+    else
+      mapping+=","
+    fi
+    mapping+="{\"fileId\":\"${file_id}\",\"path\":\"${DESTINATION_PATH}\"}"
   done
+  mapping+=']}'
+  ARGS+=(-F "mapping=${mapping};type=application/json")
 
   batch_number=$((i / BATCH_SIZE + 1))
   batch_end=$((i + BATCH_SIZE))

@@ -1,8 +1,6 @@
 package de.lind3.CloudLite.upload;
 
 import de.lind3.CloudLite.file.FileEntity;
-import de.lind3.CloudLite.upload.UploadSessionEntity;
-import de.lind3.CloudLite.upload.UploadSessionFileEntity;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -12,11 +10,10 @@ import java.util.UUID;
 /**
  * Manages the lifecycle of an upload session (batch-upload flow):
  * <ol>
- *   <li>Create a session targeting a destination folder.</li>
- *   <li>Stage one or more files into the session; each call streams binary content to
- *       storage and records metadata without making files visible to other users.</li>
- *   <li>Commit the session atomically, publishing all staged files into the folder.</li>
- *   <li>Optionally cancel an open session, cleaning up staged blobs.</li>
+ *   <li>Create a session for a batch upload.</li>
+ *   <li>Upload one or more files with a client-file-id to folder-path mapping.</li>
+ *   <li>Validate database conflicts before streaming files to their final filesystem paths.</li>
+ *   <li>Insert committed file rows after all filesystem writes succeed.</li>
  * </ol>
  */
 public interface UploadService {
@@ -24,45 +21,31 @@ public interface UploadService {
     /**
      * Opens a new upload session for the authenticated user.
      *
-     * @param ownerSubject   the JWT {@code sub} claim of the requesting user
-     * @param targetFolderId destination folder where files will be published on commit
+     * @param ownerSubject the JWT {@code sub} claim of the requesting user
      * @return the newly created session
      */
-    UploadSessionEntity createSession(String ownerSubject, UUID targetFolderId);
+    UploadSessionEntity createSession(String ownerSubject);
 
     /**
-     * Streams multiple files into the session in a single call.
-     * Each file's binary content is written to the storage backend and staged for commit;
-     * files are not yet visible to other users.
+     * Validates and streams multiple files into their mapped destination folders.
      * <p>
      * SHA-256 and byte count are computed during the single streaming write for each file —
      * content is never fully buffered in heap memory.
-     * All duplicate-name checks are performed with a single database query before any writes.
+     * Database conflicts are checked before any filesystem write occurs.
      *
      * @param sessionId    the session to add files to
      * @param ownerSubject the JWT {@code sub} claim used to verify session ownership
-     * @param files        one or more multipart files; each file's {@code Content-Disposition}
-     *                     filename is used as the staged filename
-     * @return the list of staged {@link UploadSessionFileEntity} records with status UPLOADED
-     * @throws IOException if any blob write fails
+     * @param files        one or more multipart files; each filename must be prefixed
+     *                     with its client-generated file ID
+     * @param mapping      client file ID to destination folder path mapping
+     * @return the list of committed {@link FileEntity} records
+     * @throws IOException if any filesystem write fails
      */
-    List<UploadSessionFileEntity> stageFilesBatch(UUID sessionId, String ownerSubject,
-                                                  List<MultipartFile> files) throws IOException;
+    List<FileEntity> uploadFilesBatch(UUID sessionId, String ownerSubject, List<MultipartFile> files,
+                                      BatchUploadFileMappingRequest mapping) throws IOException;
 
     /**
-     * Atomically publishes all UPLOADED files in the session to the target folder.
-     * {@link de.lind3.CloudLite.blob.BlobEntity} records are created from the staged inline
-     * metadata and linked to the new {@link FileEntity} records in a single transaction.
-     * The session status is set to COMMITTED and cannot be modified afterwards.
-     *
-     * @param sessionId    the session to commit
-     * @param ownerSubject the JWT {@code sub} claim used to verify session ownership
-     * @return the list of newly visible {@link FileEntity} records
-     */
-    List<FileEntity> commitSession(UUID sessionId, String ownerSubject);
-
-    /**
-     * Cancels an OPEN session, removing staged blobs and setting status to CANCELLED.
+     * Cancels an OPEN session.
      *
      * @param sessionId    the session to cancel
      * @param ownerSubject the JWT {@code sub} claim used to verify session ownership

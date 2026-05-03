@@ -1,6 +1,5 @@
 package de.lind3.CloudLite.file;
 
-import de.lind3.CloudLite.blob.BlobEntity;
 import de.lind3.CloudLite.folder.FolderEntity;
 import de.lind3.CloudLite.user.UserEntity;
 import jakarta.persistence.*;
@@ -15,8 +14,7 @@ import java.util.UUID;
 
 /**
  * Represents a logical file entry inside a folder.
- * The binary content is stored in the linked {@link BlobEntity}.
- * Null while the file's upload session has not yet been committed.
+ * The binary content is stored directly on the configured filesystem path.
  */
 @Entity
 @Table(
@@ -44,13 +42,21 @@ public class FileEntity {
     @JoinColumn(name = "owner_id", nullable = false)
     private UserEntity owner;
 
-    /**
-     * The blob holding the file's binary content.
-     * Null while the file's upload session has not yet been committed.
-     */
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "blob_id")
-    private BlobEntity blob;
+    /** Relative path below the configured storage base path. */
+    @Column(name = "storage_path", nullable = false, unique = true)
+    private String storagePath;
+
+    /** Hex-encoded SHA-256 digest of the raw file content. */
+    @Column(name = "sha256", length = 64, nullable = false)
+    private String sha256;
+
+    /** Exact byte size of the stored content. */
+    @Column(name = "size_bytes", nullable = false)
+    private Long sizeBytes;
+
+    /** MIME type detected or provided at upload time (e.g., "image/png"). */
+    @Column(name = "mime_type")
+    private String mimeType;
 
     @CreationTimestamp
     @Column(nullable = false, updatable = false)

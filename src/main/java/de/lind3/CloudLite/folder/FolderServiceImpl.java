@@ -4,6 +4,7 @@ import de.lind3.CloudLite.changelog.ChangeLogEntity;
 import de.lind3.CloudLite.changelog.ChangeLogService;
 import de.lind3.CloudLite.changelog.EntityType;
 import de.lind3.CloudLite.changelog.EventType;
+import de.lind3.CloudLite.file.FileStorageService;
 import de.lind3.CloudLite.user.UserEntity;
 import de.lind3.CloudLite.user.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -25,6 +27,7 @@ public class FolderServiceImpl implements FolderService {
     private final FolderRepository folderRepository;
     private final UserRepository userRepository;
     private final ChangeLogService changeLogService;
+    private final FileStorageService fileStorageService;
 
     // -------------------------------------------------------------------------
     // createFolder
@@ -59,6 +62,7 @@ public class FolderServiceImpl implements FolderService {
         folder.setOwner(owner);
         folder.setPath(buildPath(parent, folderName));
         FolderEntity savedFolder = folderRepository.save(folder);
+        createStorageDirectories(ownerSubject, List.of(savedFolder));
         changeLogService.logChange(
                 EventType.CREATE,
                 EntityType.DIRECTORY,
@@ -91,6 +95,7 @@ public class FolderServiceImpl implements FolderService {
         collectFolders(parent, directories, owner, folders);
 
         List<FolderEntity> savedFolders = folderRepository.saveAll(folders);
+        createStorageDirectories(ownerSubject, savedFolders);
         changeLogService.logChanges(buildFolderChangeLogs(savedFolders, owner));
         return savedFolders;
     }
@@ -191,6 +196,17 @@ public class FolderServiceImpl implements FolderService {
     private UserEntity resolveOrProvisionUser(String subject) {
         return userRepository.findBySubject(subject)
                 .orElseGet(() -> userRepository.save(new UserEntity(subject)));
+    }
+
+    private void createStorageDirectories(String ownerSubject, List<FolderEntity> folders) {
+        for (FolderEntity folder : folders) {
+            try {
+                fileStorageService.createDirectory(ownerSubject, folder.getPath());
+            } catch (IOException e) {
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Could not create storage directory for path: " + folder.getPath(), e);
+            }
+        }
     }
 
     private FolderEntity resolveParent(UUID parentId, UserEntity owner) {

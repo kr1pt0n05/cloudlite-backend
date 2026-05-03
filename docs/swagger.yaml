@@ -16,7 +16,7 @@ tags:
   - name: Folders
     description: Virtual folder hierarchy endpoints currently implemented by the backend.
   - name: Upload Sessions
-    description: Batch-upload session lifecycle (create -> stage files -> commit or cancel)
+    description: Batch-upload session lifecycle (create -> upload mapped files or cancel)
   - name: Change Logs
     description: User-scoped change log sync endpoint.
 
@@ -172,11 +172,11 @@ paths:
       tags: [Upload Sessions]
       summary: Create an upload session
       description: >
-        Opens a new upload session targeting the specified folder.
-        All files staged in this session will be published into that folder on commit.
+        Opens a new upload session for a mapped batch upload. The session is not
+        tied to a destination folder.
       operationId: createSession
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
@@ -202,17 +202,16 @@ paths:
   /api/upload/sessions/{sessionId}/files/batch:
     post:
       tags: [Upload Sessions]
-      summary: Stage one or more files
+      summary: Upload one or more mapped files
       description: >
         Streams one or more files into the session in a single `multipart/form-data`
-        request. All duplicate-name checks are performed with a single database query
-        before any storage writes, so the request is rejected atomically if any
-        filename is already staged in the session or appears more than once in the
-        request. Files are then streamed individually to the storage backend without
-        being buffered in heap memory.
-        If a storage or persistence error occurs after some files have been written,
-        the already-stored blobs are cleaned up on a best-effort basis.
-      operationId: stageFiles
+        request. The request must include a JSON `mapping` part with one
+        `fileId` to folder `path` entry per file. Each multipart filename must be
+        prefixed with the same client-generated UUID. The UUID prefix is removed
+        before storing the file. The backend validates folder paths and filename
+        conflicts in the database before writing any file bytes, then streams each
+        file to `.uploads/<user-sub>/<folder path>/<filename>`.
+      operationId: uploadFiles
       parameters:
         - $ref: '#/components/parameters/SessionId'
       requestBody:
@@ -221,51 +220,19 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [files]
+              required: [files, mapping]
               properties:
                 files:
                   type: array
                   items:
                     type: string
                     format: binary
-                  description: One or more binary file parts.
+                  description: One or more binary file parts with UUID-prefixed filenames.
+                mapping:
+                  $ref: '#/components/schemas/BatchUploadFileMappingRequest'
       responses:
         '201':
-          description: All files staged successfully.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/StagedFileResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /api/upload/sessions/{sessionId}/commit:
-    post:
-      tags: [Upload Sessions]
-      summary: Commit an upload session
-      description: >
-        Atomically publishes all staged files into the target folder.
-        The session status changes to `COMMITTED`. Each staged filename must be
-        unique within the target folder; if any conflict is detected the entire
-        commit is rejected and the session remains `OPEN`.
-      operationId: commitSession
-      parameters:
-        - $ref: '#/components/parameters/SessionId'
-      responses:
-        '200':
-          description: Session committed; returns the newly created file records.
+          description: All files uploaded and committed successfully.
           content:
             application/json:
               schema:
@@ -290,9 +257,7 @@ paths:
       tags: [Upload Sessions]
       summary: Cancel an upload session
       description: >
-        Cancels an open session and discards all staged metadata.
-        The session status changes to `CANCELLED`; staged blob files are left for
-        later cleanup.
+        Cancels an open session. The session status changes to `CANCELLED`.
       operationId: cancelSession
       parameters:
         - $ref: '#/components/parameters/SessionId'
@@ -434,14 +399,33 @@ components:
 
     CreateSessionRequest:
       type: object
-      required: [targetFolderId]
-      description: Request body for creating a new upload session.
+      description: Optional empty request body for creating a new upload session.
+      properties: {}
+
+    BatchUploadFileMappingRequest:
+      type: object
+      required: [files]
+      description: JSON multipart part mapping client file IDs to destination folder paths.
       properties:
-        targetFolderId:
+        files:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/UploadFileMappingRequest'
+
+    UploadFileMappingRequest:
+      type: object
+      required: [fileId, path]
+      description: Destination mapping for one multipart file.
+      properties:
+        fileId:
           type: string
-          format: uuid
-          description: UUID of the destination folder where files will be published on commit.
-          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+          description: UUID prefix used in the multipart filename.
+          example: 1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed
+        path:
+          type: string
+          description: Existing destination folder path.
+          example: /Documents/Photos
 
     # -- Response objects -----------------------------------------------------
 
@@ -487,7 +471,7 @@ components:
 
     SessionResponse:
       type: object
-      required: [id, targetFolderId, status, createdAt]
+      required: [id, status, createdAt]
       description: Metadata of an upload session.
       properties:
         id:
@@ -495,11 +479,6 @@ components:
           format: uuid
           description: Unique session identifier.
           example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
-        targetFolderId:
-          type: string
-          format: uuid
-          description: UUID of the destination folder.
-          example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
         status:
           $ref: '#/components/schemas/UploadSessionStatus'
         createdAt:
@@ -508,41 +487,10 @@ components:
           description: ISO-8601 timestamp when the session was created.
           example: '2026-04-25T20:00:00Z'
 
-    StagedFileResponse:
-      type: object
-      required: [id, fileName, sizeBytes, sha256, status, createdAt]
-      description: Metadata for a file that has been staged inside an upload session.
-      properties:
-        id:
-          type: string
-          format: uuid
-          description: Unique identifier of the staged-file record.
-          example: 1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed
-        fileName:
-          type: string
-          description: Name the file will have after the session is committed.
-          example: report.pdf
-        sizeBytes:
-          type: integer
-          format: int64
-          description: File size in bytes.
-          example: 204800
-        sha256:
-          type: string
-          description: Hex-encoded SHA-256 digest of the file content.
-          example: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-        status:
-          $ref: '#/components/schemas/UploadSessionFileStatus'
-        createdAt:
-          type: string
-          format: date-time
-          description: ISO-8601 timestamp when the file was staged.
-          example: '2026-04-25T20:01:00Z'
-
     PublishedFileResponse:
       type: object
-      required: [id, name, folderId, blobId, sizeBytes, sha256, createdAt]
-      description: Metadata for a file that has been published into a folder after session commit.
+      required: [id, name, folderId, storagePath, sizeBytes, sha256, createdAt]
+      description: Metadata for a file stored at its final filesystem path.
       properties:
         id:
           type: string
@@ -558,11 +506,10 @@ components:
           format: uuid
           description: UUID of the parent folder.
           example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
-        blobId:
+        storagePath:
           type: string
-          format: uuid
-          description: UUID of the underlying blob record.
-          example: 9b2c3d4e-5f6a-7b8c-9d0e-1f2a3b4c5d6e
+          description: Relative path below the configured storage root.
+          example: user-sub/Documents/Photos/report.pdf
         sizeBytes:
           type: integer
           format: int64
@@ -627,12 +574,6 @@ components:
       description: Lifecycle status of an upload session.
       enum: [OPEN, COMMITTED, CANCELLED, FAILED]
       example: OPEN
-
-    UploadSessionFileStatus:
-      type: string
-      description: Lifecycle status of a file within an upload session.
-      enum: [UPLOADED, COMMITTED, FAILED]
-      example: UPLOADED
 
     EventType:
       type: string
