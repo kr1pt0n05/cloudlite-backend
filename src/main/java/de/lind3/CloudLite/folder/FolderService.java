@@ -22,6 +22,22 @@ public interface FolderService {
     FolderEntity createFolder(String name, UUID parentId, String ownerSubject);
 
     /**
+     * Creates multiple folders as a tree.
+     * New parent-child relationships and paths are assigned before persisting the
+     * folders in one batch.
+     *
+     * @param parentId         ID of the existing parent folder, or {@code null} to create root folders
+     * @param directories      root directory nodes to create
+     * @param ownerSubject     JWT {@code sub} claim of the requesting user
+     * @return newly created folders in pre-order traversal
+     */
+    List<FolderEntity> createFoldersBatch(
+            UUID parentId,
+            List<CreateFolderTreeNodeRequest> directories,
+            String ownerSubject
+    );
+
+    /**
      * Returns all non-deleted direct children of the given folder.
      *
      * @param folderId         ID of the parent folder

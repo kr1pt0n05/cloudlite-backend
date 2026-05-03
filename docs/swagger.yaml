@@ -66,6 +66,44 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/folders/batch:
+    post:
+      tags: [Folders]
+      summary: Create folders as a batch tree
+      description: >
+        Creates multiple folders for the authenticated user from a nested directory
+        tree. The backend links each child folder to its parent and computes each
+        full folder path before persisting the batch. Folder names must be unique
+        among siblings and cannot contain path separators.
+      operationId: createFoldersBatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFolderBatchRequest'
+      responses:
+        '201':
+          description: Folders created successfully in pre-order traversal.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FolderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   # ---------------------------------------------------------------------------
   # Change Logs
   # ---------------------------------------------------------------------------
@@ -324,6 +362,39 @@ components:
           description: UUID of the parent folder. Omit to create a root folder.
           example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
 
+    CreateFolderBatchRequest:
+      type: object
+      required: [directories]
+      description: Request body for creating a batch of folders as a nested tree.
+      properties:
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Existing parent folder ID. Omit to create root folders.
+          example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        directories:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CreateFolderTreeNodeRequest'
+
+    CreateFolderTreeNodeRequest:
+      type: object
+      required: [name]
+      description: Folder node in a batch creation tree.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Folder name. Must be unique among sibling nodes.
+          example: Photos
+        children:
+          type: array
+          nullable: true
+          items:
+            $ref: '#/components/schemas/CreateFolderTreeNodeRequest'
+
     CreateSessionRequest:
       type: object
       required: [targetFolderId]
@@ -339,7 +410,7 @@ components:
 
     FolderResponse:
       type: object
-      required: [id, name, ownerId, createdAt, updatedAt]
+      required: [id, name, path, ownerId, createdAt, updatedAt]
       description: Metadata for a virtual folder.
       properties:
         id:
@@ -351,6 +422,10 @@ components:
           type: string
           description: Folder name.
           example: Documents
+        path:
+          type: string
+          description: Full folder path.
+          example: /Documents/Photos
         parentId:
           type: string
           format: uuid

@@ -7,11 +7,14 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 /**
  * REST endpoints for folder operations.
  *
  * <pre>
- * POST /api/folders – create a new folder
+ * POST /api/folders       – create a new folder
+ * POST /api/folders/batch – create multiple folders as a tree
  * </pre>
  */
 @RestController
@@ -36,5 +39,25 @@ public class FolderController {
         FolderEntity folder = folderService.createFolder(
                 request.name(), request.parentId(), jwt.getSubject());
         return ResponseEntity.status(HttpStatus.CREATED).body(FolderResponse.from(folder));
+    }
+
+    /**
+     * Creates multiple folders as a tree.
+     *
+     * @param request request body with optional {@code parentId} and directory tree
+     * @param jwt     authenticated user's JWT
+     * @return 201 Created with the created folder metadata in pre-order traversal
+     */
+    @PostMapping("/batch")
+    public ResponseEntity<List<FolderResponse>> createFoldersBatch(
+            @RequestBody CreateFolderBatchRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        List<FolderResponse> response = folderService
+                .createFoldersBatch(request.parentId(), request.directories(), jwt.getSubject())
+                .stream()
+                .map(FolderResponse::from)
+                .toList();
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }
