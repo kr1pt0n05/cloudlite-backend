@@ -37,26 +37,14 @@ public class UploadServiceImpl implements UploadService {
     private final UserRepository userRepository;
     private final FolderRepository folderRepository;
     private final FileRepository fileRepository;
-    private final UploadSessionRepository sessionRepository;
     private final FileStorageService fileStorageService;
     private final ChangeLogService changeLogService;
 
     @Override
     @Transactional
-    public UploadSessionEntity createSession(String ownerSubject) {
-        UserEntity owner = resolveOrProvisionUser(ownerSubject);
-
-        UploadSessionEntity session = new UploadSessionEntity();
-        session.setOwner(owner);
-        return sessionRepository.save(session);
-    }
-
-    @Override
-    @Transactional
-    public List<FileEntity> uploadFilesBatch(UUID sessionId, String ownerSubject, List<MultipartFile> files,
+    public List<FileEntity> uploadFilesBatch(String ownerSubject, List<MultipartFile> files,
                                              BatchUploadFileMappingRequest mapping) throws IOException {
         UserEntity owner = resolveOrProvisionUser(ownerSubject);
-        UploadSessionEntity session = resolveOpenSession(sessionId, owner);
         List<PlannedUpload> plannedUploads = planAndValidateUploads(owner, files, mapping);
 
         List<FileWriteResult> writeResults = new ArrayList<>(plannedUploads.size());
@@ -68,31 +56,15 @@ public class UploadServiceImpl implements UploadService {
                         plannedUpload.fileName(),
                         plannedUpload.file().getInputStream()));
             }
-            return persistUploadedFiles(session, owner, plannedUploads, writeResults);
+            return persistUploadedFiles(owner, plannedUploads, writeResults);
         } catch (IOException | RuntimeException e) {
             fileStorageService.deleteAll(writeResults);
             throw e;
         }
     }
 
-    @Override
     @Transactional
-    public void cancelSession(UUID sessionId, String ownerSubject) {
-        UserEntity owner = resolveOrProvisionUser(ownerSubject);
-        UploadSessionEntity session = sessionRepository.findByIdAndOwner(sessionId, owner)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
-
-        if (session.getStatus() != UploadSessionStatus.OPEN) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Session is not OPEN (current status: " + session.getStatus() + ")");
-        }
-
-        session.setStatus(UploadSessionStatus.CANCELLED);
-        sessionRepository.save(session);
-    }
-
-    @Transactional
-    protected List<FileEntity> persistUploadedFiles(UploadSessionEntity session, UserEntity owner,
+    protected List<FileEntity> persistUploadedFiles(UserEntity owner,
                                                     List<PlannedUpload> plannedUploads,
                                                     List<FileWriteResult> writeResults) {
         List<FileEntity> fileEntities = new ArrayList<>(plannedUploads.size());
@@ -113,21 +85,8 @@ public class UploadServiceImpl implements UploadService {
 
         List<FileEntity> savedFiles = fileRepository.saveAll(fileEntities);
         fileRepository.flush();
-        session.setStatus(UploadSessionStatus.COMMITTED);
-        sessionRepository.save(session);
         changeLogService.logChanges(buildCommittedFileChangeLogs(savedFiles, owner));
         return savedFiles;
-    }
-
-    private UploadSessionEntity resolveOpenSession(UUID sessionId, UserEntity owner) {
-        UploadSessionEntity session = sessionRepository.findByIdAndOwner(sessionId, owner)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
-
-        if (session.getStatus() != UploadSessionStatus.OPEN) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Session is not OPEN (current status: " + session.getStatus() + ")");
-        }
-        return session;
     }
 
     private List<PlannedUpload> planAndValidateUploads(UserEntity owner, List<MultipartFile> files,

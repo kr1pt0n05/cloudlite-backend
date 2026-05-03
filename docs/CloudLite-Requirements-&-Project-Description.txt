@@ -10,10 +10,10 @@ The system focuses on:
 It intentionally avoids the complexity and overhead of systems like Nextcloud, while learning from their bottlenecks.
 ### Core Design Principles
 - Database (Postgres) is the source of truth for metadata
-- Filesystem (or pluggable blob storage) stores file content
-- Files are immutable blobs
+- Filesystem stores file content at user-prefixed real paths
+- Files are stored under `<storage-root>/<user-sub>/<folder path>/<filename>`
 - Directory structure is stored in the database
-- Uploads are optimized for batching (upload sessions)
+- Uploads are optimized for direct mapped batches
 - Minimal synchronous work on upload path
 - Everything else is asynchronous
 ### Functional Requirements
@@ -24,16 +24,16 @@ It intentionally avoids the complexity and overhead of systems like Nextcloud, w
 - Soft delete (optional trash support)
 #### 2. File Upload
 - Upload single files
-- Upload many files efficiently via upload sessions
+- Upload many files efficiently via direct mapped batch upload
 - Support large and small files
 - Streaming upload (no full buffering in memory)
 - Compute file size and checksum (SHA-256) during upload
-#### 3. Upload Sessions (Critical Feature)
-- Create upload session
-- Upload multiple files under one session
-- Stage metadata before commit
-- Finalize session in batches
-- Atomic publish of uploaded files
+#### 3. Batch Uploads (Critical Feature)
+- Upload multiple files in one multipart request
+- Provide a mapping from client-generated file IDs to destination folder paths
+- Validate all folder paths and filename conflicts before streaming file bytes
+- Stream each file directly to its final user-prefixed filesystem path
+- Batch insert metadata after successful filesystem writes
 #### 4. File Download
 - Download full files
 - Support HTTP range requests (partial downloads / streaming)
@@ -43,14 +43,13 @@ Stored in Postgres:
 - filenames
 - ownership
 - timestamps
-- file → blob mapping
+- filesystem storage path
 - file size
 - checksum (SHA-256)
-#### 7. Blob Storage
-- Store file content as immutable blobs
-- Blob identified by storage key (optionally content hash)
+#### 7. Filesystem Storage
+- Store file content at the same path represented by folder metadata
+- Prefix all storage paths with the authenticated user's JWT subject
 - Local filesystem implementation (v1)
-- Pluggable backend (future: S3/MinIO)
 ### Non-Functional Requirements
 #### 1. Performance (Primary Goal)
 - Optimize for thousands of small files
@@ -69,24 +68,23 @@ Stored in Postgres:
 - Single-node optimized (initially)
 - Clean separation between:
 	- metadata (DB)
-	- blobs (storage)
+	- files (filesystem storage)
 - Allow future horizontal scaling via:
 	- stateless app instances
-	- external blob storage
+	- external/shared filesystem or object-storage adapter
 #### 4. Consistency Model
 - Strong consistency for metadata (Postgres transactions)
-- Blob writes are:
+- File writes are:
 	- write → finalize → publish
 - No partial visibility of uploaded files
 #### 5. Storage Efficiency
-- Immutable blobs
-- Optional deduplication via checksum
+- Optional deduplication or integrity checks via checksum
 #### 8. Extensibility
-- Pluggable blob storage interface
+- Pluggable file storage interface
 - Clear separation of concerns:
 	- API layer
 	- service layer
 	- storage layer
 - Future support:
-	- object storage (S3/MinIO)
+	- object storage adapter (S3/MinIO)
 	- background workers (indexing, previews)
