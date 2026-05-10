@@ -136,7 +136,7 @@ paths:
   # Change Logs
   # ---------------------------------------------------------------------------
 
-  /api/change-logs:
+  /api/changelogs:
     get:
       tags: [Change Logs]
       summary: Get change logs since a synced ID

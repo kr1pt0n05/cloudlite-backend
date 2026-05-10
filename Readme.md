@@ -1,5 +1,47 @@
 # CloudLite Backend
 
+CloudLite Backend is a Spring Boot service for CloudLite, a lightweight
+self-hosted cloud storage project inspired by Nextcloud-style file sync, built
+mainly for learning and experimentation.
+
+The backend provides the central API for authenticated users, file and folder
+metadata, batch uploads, local filesystem storage, and changelog-based
+synchronization with the CloudLite desktop client.
+
+## Scope
+
+This project currently focuses on the backend storage API, local development
+security, folder hierarchy management, mapped batch file uploads, metadata
+persistence, and changelog entries that clients can use to synchronize local
+state.
+
+The current storage implementation keeps file metadata in PostgreSQL and file
+content on the local filesystem. A future storage model may add
+content-addressed blobs with content-based chunking to support more efficient
+deduplication and sync behavior.
+
+CloudLite frontend repository: TODO: add frontend repository URL.
+
+## Architecture
+
+- Spring Boot provides the HTTP API and application runtime.
+- Spring Security runs the development OAuth2 resource server integration.
+- Keycloak OAuth2 is used for authentication in local development.
+- PostgreSQL stores users, folders, files, and changelog metadata.
+- The local filesystem stores uploaded file content under the configured
+  storage base path.
+- File, folder, upload, changelog, and user packages separate the main backend
+  responsibilities.
+- Docker Compose starts the local PostgreSQL and Keycloak dependencies.
+
+## Commands
+
+```bash
+docker compose up -d
+./mvnw spring-boot:run
+./mvnw test
+```
+
 ## Generate mapped upload test files
 
 Use `scripts/generate-mapped-upload-files.sh` to create UUID-prefixed test files
