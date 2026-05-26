@@ -26,28 +26,12 @@ CloudLite frontend repository: [cloudlite-frontend](https://github.com/kr1pt0n05
 
 ## Architecture
 
-- Spring Boot provides the HTTP API and application runtime.
-- Spring Security configures the backend as an OAuth2 resource server.
-- Keycloak provides the development realm and issues JWT access tokens for the
-  `frontend-client` OAuth2/OpenID Connect client.
-- PostgreSQL stores users, folder trees, file metadata, and synchronization
-  changelogs.
-- `FileStorageService` separates content storage from metadata persistence.
-- The current `LocalFileStorageService` streams content to paths beneath
-  `FILE_STORAGE_PATH`, prefixed by the authenticated user's JWT subject.
-- Docker Compose starts the application database, a separate Keycloak database,
-  and Keycloak with the imported `development` realm.
-
-### Storage Direction
-
-The current development implementation is filesystem based: PostgreSQL is the
-source of truth for metadata, while file bytes are written under the configured
-local storage directory (`./.uploads` by default).
-
-A later object-based implementation is planned through the existing storage
-abstraction, using [RustFS](https://rustfs.com/) as an S3-compatible,
-MinIO-alternative object store. This keeps the API and metadata model separate
-from the physical file storage backend.
+- Swagger (OpenAPI) documents the API: [docs/swagger.yaml](docs/swagger.yaml).
+- Keycloak and OAuth2 provide authentication.
+- Spring Boot exposes the REST endpoints.
+- PostgreSQL stores metadata.
+- File content is currently stored on the local filesystem and will later be
+  moved to object-based storage using RustFS as a MinIO alternative.
 
 ## Setup
 
@@ -125,23 +109,3 @@ The development stack uses these local endpoints by default:
 
 Development note: `JPA_HIBERNATE_DDL_AUTO=create-drop` recreates the application
 schema when the backend starts, so local metadata is not retained between runs.
-
-## Authentication
-
-In development, CloudLite uses Keycloak and OAuth2/OpenID Connect:
-
-- The frontend authenticates with the public `frontend-client` client.
-- Keycloak issues a JWT access token from the `development` realm.
-- The backend validates the bearer JWT through its configured issuer URI.
-- `/api/folders/**`, `/api/upload/**`, and `/api/changelogs/**` require an
-  authenticated token.
-
-## Commands
-
-```bash
-docker compose up -d      # Start PostgreSQL and Keycloak
-set -a; . ./.env; set +a  # Load backend environment configuration
-./mvnw spring-boot:run    # Run the backend at http://localhost:8000
-./mvnw test               # Run the backend tests
-docker compose down       # Stop local infrastructure
-```
