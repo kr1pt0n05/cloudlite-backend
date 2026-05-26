@@ -15,7 +15,7 @@ import java.util.List;
  * REST endpoint for client sync change logs.
  */
 @RestController
-@RequestMapping("/api/change-logs")
+@RequestMapping("/api/changelogs")
 @RequiredArgsConstructor
 public class ChangeLogController {
 

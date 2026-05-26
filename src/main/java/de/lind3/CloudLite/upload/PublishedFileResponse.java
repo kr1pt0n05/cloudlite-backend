@@ -6,12 +6,12 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Response DTO for a published file (after session commit).
+ * Response DTO for a file written to its final filesystem path.
  *
  * @param id        file identifier
  * @param name      filename inside the folder
  * @param folderId  parent folder
- * @param blobId    underlying blob identifier
+ * @param storagePath relative filesystem path below the configured storage root
  * @param sizeBytes byte count
  * @param sha256    hex SHA-256 digest
  * @param mimeType  MIME type, or {@code null} if unknown
@@ -21,7 +21,7 @@ public record PublishedFileResponse(
         UUID id,
         String name,
         UUID folderId,
-        UUID blobId,
+        String storagePath,
         long sizeBytes,
         String sha256,
         String mimeType,
@@ -32,10 +32,10 @@ public record PublishedFileResponse(
                 entity.getId(),
                 entity.getName(),
                 entity.getFolder().getId(),
-                entity.getBlob().getId(),
-                entity.getBlob().getSizeBytes(),
-                entity.getBlob().getSha256(),
-                entity.getBlob().getMimeType(),
+                entity.getStoragePath(),
+                entity.getSizeBytes(),
+                entity.getSha256(),
+                entity.getMimeType(),
                 entity.getCreatedAt()
         );
     }

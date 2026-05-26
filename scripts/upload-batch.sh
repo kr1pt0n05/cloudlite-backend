@@ -6,16 +6,16 @@ FILES_DIR="${FILES_DIR:-test-files}"
 BATCH_SIZE="${BATCH_SIZE:-250}"
 CONNECT_TIMEOUT="${CONNECT_TIMEOUT:-10}"
 MAX_TIME="${MAX_TIME:-300}"
-SESSION_ID="${SESSION_ID:-${1:-}}"
-TOKEN="${TOKEN:-${2:-}}"
+TOKEN="${TOKEN:-${1:-}}"
+DESTINATION_PATH="${DESTINATION_PATH:-${2:-}}"
 
-if [[ -z "$SESSION_ID" ]]; then
-  echo "SESSION_ID is required. Usage: SESSION_ID=<uuid> TOKEN=<jwt> $0"
+if [[ -z "$TOKEN" ]]; then
+  echo "TOKEN is required. Usage: TOKEN=<jwt> DESTINATION_PATH=/Folder $0"
   exit 1
 fi
 
-if [[ -z "$TOKEN" ]]; then
-  echo "TOKEN is required. Usage: SESSION_ID=<uuid> TOKEN=<jwt> $0"
+if [[ -z "$DESTINATION_PATH" ]]; then
+  echo "DESTINATION_PATH is required. Usage: TOKEN=<jwt> DESTINATION_PATH=/Folder $0"
   exit 1
 fi
 
@@ -33,7 +33,7 @@ if ((total == 0)); then
   exit 1
 fi
 
-echo "Uploading $total files from $FILES_DIR to session $SESSION_ID"
+echo "Uploading $total files from $FILES_DIR to $DESTINATION_PATH"
 echo "Batch size: $BATCH_SIZE"
 echo "Backend: $BASE_URL"
 echo "Curl connect timeout: ${CONNECT_TIMEOUT}s"
@@ -48,10 +48,22 @@ echo "Started at $start_human"
 
 for ((i=0; i<total; i+=BATCH_SIZE)); do
   ARGS=()
+  mapping='{"files":['
+  first_mapping=true
 
   for f in "${files[@]:i:BATCH_SIZE}"; do
-    ARGS+=(-F "files=@${f}")
+    file_id="$(cat /proc/sys/kernel/random/uuid)"
+    upload_name="${file_id}-$(basename "$f")"
+    ARGS+=(-F "files=@${f};filename=${upload_name}")
+    if [[ "$first_mapping" == true ]]; then
+      first_mapping=false
+    else
+      mapping+=","
+    fi
+    mapping+="{\"fileId\":\"${file_id}\",\"path\":\"${DESTINATION_PATH}\"}"
   done
+  mapping+=']}'
+  ARGS+=(-F "mapping=${mapping};type=application/json")
 
   batch_number=$((i / BATCH_SIZE + 1))
   batch_end=$((i + BATCH_SIZE))
@@ -66,7 +78,7 @@ for ((i=0; i<total; i+=BATCH_SIZE)); do
   curl_output=$(curl -sS -o "$response_file" -w "%{http_code} %{time_total}" \
     --connect-timeout "$CONNECT_TIMEOUT" \
     --max-time "$MAX_TIME" \
-    -X POST "$BASE_URL/api/upload/sessions/$SESSION_ID/files/batch" \
+    -X POST "$BASE_URL/api/upload/files/batch" \
     -H "Authorization: Bearer $TOKEN" \
     -H "Expect:" \
     "${ARGS[@]}")
